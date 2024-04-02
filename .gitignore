@@ -1,0 +1,6 @@
+.vscode/
+bin/
+obj/
+appsettings.Development.json
+appsettings.json
+airport-lookup.csv
