@@ -9,7 +9,9 @@ import (
 func main() {
 	// Parse command-line arguments
 	if len(os.Args) != 4 || os.Args[1] == "-h" {
-		fmt.Println("itinerary usage: go run . ../input.txt ../output.txt ../airport-lookup.csv")
+		fmt.Println("itinerary usage:")
+		fmt.Println("go run . ../input.txt ../output.txt ../airport-lookup.csv")
+		// fmt.Println("itinerary usage: go run . ../input.txt ../output.txt ../airport-lookup.csv")
 		os.Exit(1)
 	}
 
