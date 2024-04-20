@@ -1,70 +1,92 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"regexp"
+	"sort"
 	"strings"
-	"time"
 )
 
-func processItinerary(itinerary string, airportLookup map[string]string) string {
-	lines := strings.Split(itinerary, "\n")
-	var processedLines []string
-	for _, line := range lines {
-		trimmedLine := strings.TrimSpace(line)
-		if trimmedLine == "" {
-			processedLines = append(processedLines, "")
-			continue
-		}
+// process the input file and return the output string.
+func processInputFile(inputFile *os.File, csvFile *os.File, iataIndex, icaoIndex, nameIndex int) (string, error) {
+	scanner := bufio.NewScanner(inputFile)
+	iataRegex, _ := regexp.Compile(`#[A-Z]{3}`)
+	icaoRegex, _ := regexp.Compile(`##[A-Z]{4}`)
+	dateRegex, _ := regexp.Compile(`([DT])(\d{2})?\((\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(Z|[\+\-]\d{2}:\d{2}))\)`)
+	var output []string
+	var lastLineWasBlank bool
 
-		parts := strings.Split(trimmedLine, "(")
-		if len(parts) < 2 {
-			processedLines = append(processedLines, trimmedLine)
-			continue
-		}
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.ReplaceAll(line, "\v", "\n")
+		line = strings.ReplaceAll(line, "\f", "\n")
+		line = strings.ReplaceAll(line, "\r", "\n")
 
-		text := parts[0]
-		dateTime := strings.TrimRight(parts[1], ")")
+		line = strings.TrimSpace(line)
 
-		if strings.HasPrefix(dateTime, "D") {
-			date := strings.TrimPrefix(dateTime, "D")
-			parsedDate, err := time.Parse("2006-01-02T15:04:05Z", date)
-			if err != nil {
-				processedLines = append(processedLines, trimmedLine)
-				continue
+		if line == "" {
+			if !lastLineWasBlank {
+				output = append(output, "\n")
+				lastLineWasBlank = true
 			}
-			formattedDate := parsedDate.Format("02 Jan 2006")
-			processedLines = append(processedLines, fmt.Sprintf("%s (%s)", text, formattedDate))
-		} else if strings.HasPrefix(dateTime, "T12") || strings.HasPrefix(dateTime, "T24") {
-			formattedTime, err := parseTime(dateTime)
-			if err != nil {
-				processedLines = append(processedLines, trimmedLine)
-				continue
-			}
-			processedLines = append(processedLines, fmt.Sprintf("%s (%s)", text, formattedTime))
 		} else {
-			processedLines = append(processedLines, trimmedLine)
+			lastLineWasBlank = false
+			matches := findAllMatches(line, iataRegex, icaoRegex, dateRegex)
+			output = append(output, processMatches(matches, line, csvFile, iataIndex, icaoIndex, nameIndex))
 		}
 	}
-	return strings.Join(processedLines, "\n")
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("error reading from input file: %v", err)
+	}
+
+	return strings.Join(output, ""), nil
 }
 
-func parseTime(dateTime string) (string, error) {
-	formats := []string{
-		"2006-01-02T15:04:05Z",
-		"2006-01-02T15:04:05-07:00",
-		"2006-01-02T15:04Z",
-		"2006-01-02T15:04-07:00",
+// find all IATA and ICAO code and date matches.
+func findAllMatches(line string, iataRegex, icaoRegex, dateRegex *regexp.Regexp) []Match {
+	var matches []Match
+
+	iataMatches := iataRegex.FindAllStringIndex(line, -1)
+	for _, match := range iataMatches {
+		matches = append(matches, Match{Index: match[0], Value: line[match[0]:match[1]], Type: "iata"})
 	}
 
-	for _, format := range formats {
-		parsedTime, err := time.Parse(format, dateTime)
-		if err == nil {
-			if strings.Contains(format, "Z") {
-				return parsedTime.Format("03:04PM (-07:00)"), nil
+	icaoMatches := icaoRegex.FindAllStringIndex(line, -1)
+	for _, match := range icaoMatches {
+		matches = append(matches, Match{Index: match[0], Value: line[match[0]:match[1]], Type: "icao"})
+	}
+
+	dateMatches := dateRegex.FindAllStringIndex(line, -1)
+	for _, match := range dateMatches {
+		matches = append(matches, Match{Index: match[0], Value: line[match[0]:match[1]], Type: "date"})
+	}
+
+	return matches
+}
+
+// process matches and return the result string.
+func processMatches(matches []Match, line string, csvFile *os.File, iataIndex, icaoIndex, nameIndex int) string {
+	// sort matches by index
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].Index < matches[j].Index
+	})
+
+	for _, match := range matches {
+		var replacement string
+		switch match.Type {
+		case "iata", "icao":
+			replacement = lookupCode(match.Value, csvFile, iataIndex, icaoIndex, nameIndex)
+		case "date":
+			adjustedTime, err := processLine(match.Value)
+			if err == nil {
+				replacement = adjustedTime
 			}
-			return parsedTime.Format("03:04PM"), nil
 		}
+		line = strings.Replace(line, match.Value, replacement, 1)
 	}
 
-	return "", fmt.Errorf("could not parse time: %s", dateTime)
+	return line + "\n"
 }

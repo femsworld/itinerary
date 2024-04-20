@@ -1,51 +1,78 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 )
 
+type Match struct {
+	Index int    // sort the matches
+	Value string // matched text
+	Type  string
+}
+
 func main() {
-	// Parse command-line arguments
-	if len(os.Args) != 4 || os.Args[1] == "-h" {
+	helpFlag := flag.Bool("h", false, "Display help")
+	flag.Parse()
+
+	if *helpFlag {
 		fmt.Println("itinerary usage:")
-		fmt.Println("go run . ../input.txt ../output.txt ../airport-lookup.csv")
-		// fmt.Println("itinerary usage: go run . ../input.txt ../output.txt ../airport-lookup.csv")
-		os.Exit(1)
+		fmt.Println("go run . ./input.txt ./output.txt ./airport-lookup.csv")
+		return
 	}
 
-	inputFile := os.Args[1]
-	outputFile := os.Args[2]
-	airportLookupFile := os.Args[3]
+	inputFilePath := "./input.txt"
+	outputFilePath := "./output.txt"
+	csvFilePath := "./airport-lookup.csv"
 
-	// Read input file
-	itineraryText, err := ioutil.ReadFile(inputFile)
-	if err != nil {
-		fmt.Println("Input not found")
-		os.Exit(1)
-	}
-
-	// Read airport lookup CSV
-	airportLookup, err := readAirportLookup(airportLookupFile)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	// Process itinerary
-	processedItinerary := processItinerary(string(itineraryText), airportLookup)
-
-	// Write output file
-	outputExists := fileExists(outputFile)
-	if outputExists {
+	// Check if output.txt file exists
+	if fileExists(outputFilePath) {
 		fmt.Println("Output file already exists. Exiting.")
-		os.Exit(1)
+		return
 	}
 
-	err = ioutil.WriteFile(outputFile, []byte(processedItinerary), 0644)
+	csvFile, err := openCSV(csvFilePath)
 	if err != nil {
-		fmt.Println("Error writing to output file:", err)
-		os.Exit(1)
+		fmt.Println("error:", err)
+		return
 	}
+	defer csvFile.Close()
+
+	header, err := readCSVHeader(csvFile)
+	if err != nil {
+		fmt.Println("Airport lookup malformed.", err)
+		return
+	}
+
+	iataIndex, icaoIndex, nameIndex := findColumnIndices(header)
+	if iataIndex == -1 || icaoIndex == -1 || nameIndex == -1 {
+		fmt.Println("Airport lookup malformed.")
+		return
+	}
+
+	inputFile, err := os.Open(inputFilePath)
+	if err != nil {
+		fmt.Println("Input not found.")
+		return
+	}
+	defer inputFile.Close()
+
+	output, err := processInputFile(inputFile, csvFile, iataIndex, icaoIndex, nameIndex)
+	if err != nil {
+		fmt.Println("error:")
+		return
+	}
+
+	if err := writeOutput(outputFilePath, output); err != nil {
+		fmt.Println("error:", err)
+	}
+}
+
+// write the output string to a file.
+func writeOutput(filename, output string) error {
+	if output == "" {
+		return nil
+	}
+	return os.WriteFile(filename, []byte(output), 0644)
 }
