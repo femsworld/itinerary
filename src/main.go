@@ -16,7 +16,17 @@ func main() {
 	helpFlag := flag.Bool("h", false, "Display help")
 	flag.Parse()
 
-	if *helpFlag {
+	// Check if no arguments were passed, or the help flag is set
+	if *helpFlag || len(flag.Args()) == 0 {
+		fmt.Println("itinerary usage:")
+		fmt.Println("go run . ./input.txt ./output.txt ./airport-lookup.csv")
+		return
+	}
+
+	// Get the expected file paths from command line arguments
+	args := flag.Args()
+	if len(args) < 3 {
+		// fmt.Println("Missing required arguments.")
 		fmt.Println("itinerary usage:")
 		fmt.Println("go run . ./input.txt ./output.txt ./airport-lookup.csv")
 		return
