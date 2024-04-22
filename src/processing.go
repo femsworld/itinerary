@@ -76,15 +76,19 @@ func processMatches(matches []Match, line string, csvFile *os.File, iataIndex, i
 
 	for _, match := range matches {
 		var replacement string
+		var err error
 		switch match.Type {
 		case "iata", "icao":
 			replacement = lookupCode(match.Value, csvFile, iataIndex, icaoIndex, nameIndex)
 		case "date":
-			adjustedTime, err := processLine(match.Value)
-			if err == nil {
-				replacement = adjustedTime
+			replacement, err = processLine(match.Value) // Get replacement or error
+			if err != nil {
+				// If there's an error, leave the original value
+				replacement = match.Value
 			}
 		}
+
+		// Replace the original value with the processed one in the line
 		line = strings.Replace(line, match.Value, replacement, 1)
 	}
 
