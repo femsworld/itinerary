@@ -46,19 +46,22 @@ func readCSVHeader(csvFile *os.File) ([]string, error) {
 }
 
 // find indices of the needed columns.
-func findColumnIndices(header []string) (int, int, int) {
-	iataIndex, icaoIndex, nameIndex := -1, -1, -1
-	for i, columnName := range header {
-		switch columnName {
+func findColumnIndices(header []string) (iataIndex, icaoIndex, nameIndex, cityIndex int) {
+	iataIndex, icaoIndex, nameIndex, cityIndex = -1, -1, -1, -1
+	for i, colName := range header {
+		normalized := strings.TrimSpace(strings.ToLower(colName))
+		switch normalized {
 		case "iata_code":
 			iataIndex = i
 		case "icao_code":
 			icaoIndex = i
 		case "name":
 			nameIndex = i
+		case "municipality":
+			cityIndex = i
 		}
 	}
-	return iataIndex, icaoIndex, nameIndex
+	return iataIndex, icaoIndex, nameIndex, cityIndex
 }
 
 // look up a code in the CSV and return the name as string.

@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"sort"
@@ -10,11 +12,12 @@ import (
 )
 
 // process the input file and return the output string.
-func processInputFile(inputFile *os.File, csvFile *os.File, iataIndex, icaoIndex, nameIndex int) (string, error) {
+func processInputFile(inputFile *os.File, csvFile *os.File, iataIndex, icaoIndex, nameIndex, cityIndex int) (string, error) {
 	scanner := bufio.NewScanner(inputFile)
-	iataRegex, _ := regexp.Compile(`#[A-Z]{3}`)
-	icaoRegex, _ := regexp.Compile(`##[A-Z]{4}`)
+	iataRegex, _ := regexp.Compile(`#([A-Z]{3})`)  // Adjusted regex for IATA
+	icaoRegex, _ := regexp.Compile(`##([A-Z]{4})`) // Adjusted regex for ICAO
 	dateRegex, _ := regexp.Compile(`([DT])(\d{2})?\((\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(Z|[\+\-]\d{2}:\d{2}))\)`)
+	starRegex, _ := regexp.Compile(`\*#([A-Z]{3})`) // New regex for city code lookup
 	var output []string
 	var lastLineWasBlank bool
 
@@ -33,8 +36,8 @@ func processInputFile(inputFile *os.File, csvFile *os.File, iataIndex, icaoIndex
 			}
 		} else {
 			lastLineWasBlank = false
-			matches := findAllMatches(line, iataRegex, icaoRegex, dateRegex)
-			output = append(output, processMatches(matches, line, csvFile, iataIndex, icaoIndex, nameIndex))
+			matches := findAllMatches(line, iataRegex, icaoRegex, dateRegex, starRegex) // Updated to include starRegex for city lookup
+			output = append(output, processMatches(matches, line, csvFile, iataIndex, icaoIndex, nameIndex, cityIndex))
 		}
 	}
 
@@ -46,19 +49,29 @@ func processInputFile(inputFile *os.File, csvFile *os.File, iataIndex, icaoIndex
 }
 
 // find all IATA and ICAO code and date matches.
-func findAllMatches(line string, iataRegex, icaoRegex, dateRegex *regexp.Regexp) []Match {
+
+func findAllMatches(line string, iataRegex, icaoRegex, dateRegex, starRegex *regexp.Regexp) []Match {
 	var matches []Match
 
+	// IATA matches
 	iataMatches := iataRegex.FindAllStringIndex(line, -1)
 	for _, match := range iataMatches {
 		matches = append(matches, Match{Index: match[0], Value: line[match[0]:match[1]], Type: "iata"})
 	}
 
+	// ICAO matches
 	icaoMatches := icaoRegex.FindAllStringIndex(line, -1)
 	for _, match := range icaoMatches {
 		matches = append(matches, Match{Index: match[0], Value: line[match[0]:match[1]], Type: "icao"})
 	}
 
+	// Starred matches
+	starMatches := starRegex.FindAllStringIndex(line, -1)
+	for _, match := range starMatches {
+		matches = append(matches, Match{Index: match[0], Value: line[match[0]:match[1]], Type: "starred"})
+	}
+
+	// Date matches
 	dateMatches := dateRegex.FindAllStringIndex(line, -1)
 	for _, match := range dateMatches {
 		matches = append(matches, Match{Index: match[0], Value: line[match[0]:match[1]], Type: "date"})
@@ -67,9 +80,8 @@ func findAllMatches(line string, iataRegex, icaoRegex, dateRegex *regexp.Regexp)
 	return matches
 }
 
-// process matches and return the result string.
-func processMatches(matches []Match, line string, csvFile *os.File, iataIndex, icaoIndex, nameIndex int) string {
-	// sort matches by index
+// // process matches and return the result string.
+func processMatches(matches []Match, line string, csvFile *os.File, iataIndex, icaoIndex, nameIndex, cityIndex int) string {
 	sort.Slice(matches, func(i, j int) bool {
 		return matches[i].Index < matches[j].Index
 	})
@@ -77,20 +89,55 @@ func processMatches(matches []Match, line string, csvFile *os.File, iataIndex, i
 	for _, match := range matches {
 		var replacement string
 		var err error
-		switch match.Type {
-		case "iata", "icao":
-			replacement = lookupCode(match.Value, csvFile, iataIndex, icaoIndex, nameIndex)
-		case "date":
-			replacement, err = processLine(match.Value) // Get replacement or error
-			if err != nil {
-				// If there's an error, leave the original value
-				replacement = match.Value
+		if strings.HasPrefix(match.Value, "*#") {
+			// It's a city name lookup
+			code := match.Value[2:]                                                      // Remove the "*#" prefix
+			replacement = lookupCityName(code, csvFile, iataIndex, icaoIndex, cityIndex) // Fetch the city name
+		} else {
+			switch match.Type {
+			case "iata", "icao":
+				replacement = lookupCode(match.Value, csvFile, iataIndex, icaoIndex, nameIndex) // Existing code lookup
+			case "date":
+				replacement, err = processLine(match.Value)
+				if err != nil {
+					replacement = match.Value // If error occurs, return the original match value
+				}
 			}
 		}
 
-		// Replace the original value with the processed one in the line
+		// Replace the original value with the replacement in the line
 		line = strings.Replace(line, match.Value, replacement, 1)
 	}
 
 	return line + "\n"
+}
+
+// lookup city name based on IATA/ICAO code
+func lookupCityName(code string, csvFile *os.File, iataIndex, icaoIndex, cityIndex int) string {
+	// Reset file position to the beginning to start reading from the start.
+	csvFile.Seek(0, io.SeekStart)
+
+	reader := csv.NewReader(csvFile)
+	cityName := code // Default to code if not found
+
+	// Iterate through the CSV file to find the matching IATA or ICAO code
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return cityName // Return the original code if there's an error
+		}
+
+		// If IATA or ICAO matches the code, retrieve the corresponding municipality
+		if strings.TrimSpace(record[iataIndex]) == code || strings.TrimSpace(record[icaoIndex]) == code {
+			if cityIndex < len(record) {
+				cityName = record[cityIndex] // Get the corresponding municipality
+			}
+			break
+		}
+	}
+
+	return cityName
 }

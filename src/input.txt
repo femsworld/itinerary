@@ -24,4 +24,5 @@ Your flight from "#LAX" to "#ZZZ" departs in 24 hours.
 
 
 Your flight departs from "#HAJ", and your destination is "##EDDW".
-Your flight departs from "#HAJ", and your destination is "##EDDW".
+Your flight departs from "*#LAX", and your destination is "##EDDW".
+Your flight departs from "*#HAJ", and your destination is "##EDDW".

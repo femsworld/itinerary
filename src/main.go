@@ -16,25 +16,24 @@ func main() {
 	helpFlag := flag.Bool("h", false, "Display help")
 	flag.Parse()
 
-	// Check if no arguments were passed, or the help flag is set
+	// Check if no arguments were passed or if the help flag is set
 	if *helpFlag || len(flag.Args()) == 0 {
 		fmt.Println("itinerary usage:")
 		fmt.Println("go run . ./input.txt ./output.txt ./airport-lookup.csv")
 		return
 	}
 
-	// Get the expected file paths from command line arguments
 	args := flag.Args()
 	if len(args) < 3 {
-		// fmt.Println("Missing required arguments.")
+		// Missing required arguments
 		fmt.Println("itinerary usage:")
 		fmt.Println("go run . ./input.txt ./output.txt ./airport-lookup.csv")
 		return
 	}
 
-	inputFilePath := "./input.txt"
-	outputFilePath := "./output.txt"
-	csvFilePath := "./airport-lookup.csv"
+	inputFilePath := args[0]
+	outputFilePath := args[1]
+	csvFilePath := args[2]
 
 	// Check if output.txt file exists
 	if fileExists(outputFilePath) {
@@ -42,44 +41,48 @@ func main() {
 		return
 	}
 
+	// Open the CSV file and find indices
 	csvFile, err := openCSV(csvFilePath)
 	if err != nil {
-		fmt.Println("error:", err)
+		fmt.Println("Error opening CSV file:", err)
 		return
 	}
 	defer csvFile.Close()
 
 	header, err := readCSVHeader(csvFile)
 	if err != nil {
-		fmt.Println("Airport lookup malformed.", err)
+		fmt.Println("Error reading CSV header:", err)
 		return
 	}
 
-	iataIndex, icaoIndex, nameIndex := findColumnIndices(header)
-	if iataIndex == -1 || icaoIndex == -1 || nameIndex == -1 {
-		fmt.Println("Airport lookup malformed.")
+	// Inserted code snippet here
+	iataIndex, icaoIndex, nameIndex, cityIndex := findColumnIndices(header)
+
+	if iataIndex == -1 || icaoIndex == -1 || nameIndex == -1 || cityIndex == -1 {
+		fmt.Println("Airport lookup malformed. Header:", header)
 		return
 	}
 
+	// Open input file and process it
 	inputFile, err := os.Open(inputFilePath)
 	if err != nil {
-		fmt.Println("Input not found.")
+		fmt.Println("Input not found:", err)
 		return
 	}
 	defer inputFile.Close()
 
-	output, err := processInputFile(inputFile, csvFile, iataIndex, icaoIndex, nameIndex)
+	output, err := processInputFile(inputFile, csvFile, iataIndex, icaoIndex, nameIndex, cityIndex) // Updated to include cityIndex
 	if err != nil {
-		fmt.Println("error:")
+		fmt.Println("Error processing input file:", err)
 		return
 	}
 
+	// Write output to file
 	if err := writeOutput(outputFilePath, output); err != nil {
-		fmt.Println("error:", err)
+		fmt.Println("Error writing to output file:", err)
 	}
 }
 
-// write the output string to a file.
 func writeOutput(filename, output string) error {
 	if output == "" {
 		return nil
