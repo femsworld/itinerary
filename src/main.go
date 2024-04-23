@@ -23,7 +23,6 @@ func main() {
 	helpFlag := flag.Bool("h", false, "Display help")
 	flag.Parse()
 
-	// Check if no arguments were passed or if the help flag is set
 	if *helpFlag || len(flag.Args()) == 0 {
 		fmt.Println("itinerary usage:")
 		fmt.Println("go run . ./input.txt ./output.txt ./airport-lookup.csv")
@@ -32,7 +31,6 @@ func main() {
 
 	args := flag.Args()
 	if len(args) < 3 {
-		// Missing required arguments
 		fmt.Println("itinerary usage:")
 		fmt.Println("go run . ./input.txt ./output.txt ./airport-lookup.csv")
 		return
@@ -62,7 +60,6 @@ func main() {
 		return
 	}
 
-	// Inserted code snippet here
 	iataIndex, icaoIndex, nameIndex, cityIndex := findColumnIndices(header)
 
 	if iataIndex == -1 || icaoIndex == -1 || nameIndex == -1 || cityIndex == -1 {
@@ -70,7 +67,7 @@ func main() {
 		return
 	}
 
-	// Open input file and process it
+	// Open the input file and process it
 	inputFile, err := os.Open(inputFilePath)
 	if err != nil {
 		fmt.Println("Input not found:", err)
@@ -78,19 +75,21 @@ func main() {
 	}
 	defer inputFile.Close()
 
-	output, err := processInputFile(inputFile, csvFile, iataIndex, icaoIndex, nameIndex, cityIndex) // Updated to include cityIndex
+	formattedOutput, unformattedOutput, err := processInputFile(inputFile, csvFile, iataIndex, icaoIndex, nameIndex, cityIndex)
 	if err != nil {
 		fmt.Println("Error processing input file:", err)
 		return
 	}
 
-	// Write output to file
-	if err := writeOutput(outputFilePath, output); err != nil {
+	// Write unformatted output to the file
+	err = writeOutput(outputFilePath, unformattedOutput)
+	if err != nil {
 		fmt.Println("Error writing to output file:", err)
+		return
 	}
 
-	// Also print the output to the terminal
-	fmt.Print(output) // output contains the formatted text
+	// Print formatted output to the terminal
+	fmt.Print(formattedOutput)
 }
 
 func writeOutput(filename, output string) error {

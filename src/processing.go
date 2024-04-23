@@ -12,37 +12,45 @@ import (
 )
 
 // process the input file and return the output string.
-func processInputFile(inputFile *os.File, csvFile *os.File, iataIndex, icaoIndex, nameIndex, cityIndex int) (string, error) {
-	scanner := bufio.NewScanner(inputFile)
+func processInputFile(inputFile *os.File, csvFile *os.File, iataIndex, icaoIndex, nameIndex, cityIndex int) (formattedOutput, unformattedOutput string, err error) {
+	// Declare and initialize the regex patterns
 	iataRegex, _ := regexp.Compile(`#([A-Z]{3})`)
 	icaoRegex, _ := regexp.Compile(`##([A-Z]{4})`)
-	dateRegex, _ := regexp.Compile(`([DT])(\d{2})?\((\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(Z|[\+\-]\d{2}:\d{2}))\)`)
+	dateRegex, _ := regexp.Compile(`([DT])(\d{2})?\((\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(Z|[\+\-]\d{2}:\d{2}))\)`) // New regex pattern for date
 	starRegex, _ := regexp.Compile(`\*#([A-Z]{3})`)
 
-	var output []string
+	// Read and process input
+	scanner := bufio.NewScanner(inputFile)
+	var formattedLines, unformattedLines []string
 	var lastLineWasBlank bool
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		line = strings.TrimSpace(line)
+		line := strings.TrimSpace(scanner.Text())
+		matches := findAllMatches(line, iataRegex, icaoRegex, dateRegex, starRegex) // Include all four regex patterns
 
-		if line == "" {
+		if line == "" { // Handle blank lines
 			if !lastLineWasBlank {
-				output = append(output, "\n")
+				formattedLines = append(formattedLines, "\n")
+				unformattedLines = append(unformattedLines, "\n")
 				lastLineWasBlank = true
 			}
 		} else {
 			lastLineWasBlank = false
-			matches := findAllMatches(line, iataRegex, icaoRegex, dateRegex, starRegex)
-			output = append(output, processMatches(matches, line, csvFile, iataIndex, icaoIndex, nameIndex, cityIndex))
+			// Process formatted and unformatted outputs
+			formattedLines = append(formattedLines, processMatches(matches, line, csvFile, iataIndex, icaoIndex, nameIndex, cityIndex, true))
+			unformattedLines = append(unformattedLines, processMatches(matches, line, csvFile, iataIndex, icaoIndex, nameIndex, cityIndex, false))
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("error reading from input file: %v", err)
+		return "", "", fmt.Errorf("error reading from input file: %v", err)
 	}
 
-	return strings.Join(output, ""), nil
+	// Join the outputs into single strings
+	formattedOutput = strings.Join(formattedLines, "")
+	unformattedOutput = strings.Join(unformattedLines, "")
+
+	return formattedOutput, unformattedOutput, nil
 }
 
 // find all IATA and ICAO code and date matches.
@@ -77,7 +85,7 @@ func findAllMatches(line string, iataRegex, icaoRegex, dateRegex, starRegex *reg
 }
 
 // process matches and return the result string.
-func processMatches(matches []Match, line string, csvFile *os.File, iataIndex, icaoIndex, nameIndex, cityIndex int) string {
+func processMatches(matches []Match, line string, csvFile *os.File, iataIndex, icaoIndex, nameIndex, cityIndex int, formatOutput bool) string {
 	sort.Slice(matches, func(i, j int) bool {
 		return matches[i].Index < matches[j].Index
 	})
@@ -85,26 +93,30 @@ func processMatches(matches []Match, line string, csvFile *os.File, iataIndex, i
 	for _, match := range matches {
 		var replacement string
 		var err error
+		var code string
 		if strings.HasPrefix(match.Value, "*#") {
 			// It's a city name lookup
-			code := match.Value[2:]                                                      // Remove the "*#" prefix
-			replacement = lookupCityName(code, csvFile, iataIndex, icaoIndex, cityIndex) // Fetch the city name
-			replacement = boldBlue + replacement + ansiReset                             // Format in bold blue
+			code = match.Value[2:] // Remove "*#"
+			replacement = lookupCityName(code, csvFile, iataIndex, icaoIndex, cityIndex)
+			if formatOutput {
+				replacement = boldBlue + replacement + ansiReset // format for terminal
+			}
 		} else {
 			switch match.Type {
 			case "iata", "icao":
 				replacement = lookupCode(match.Value, csvFile, iataIndex, icaoIndex, nameIndex)
-				replacement = boldYellow + replacement + ansiReset // Format in bold yellow
+				if formatOutput {
+					replacement = boldYellow + replacement + ansiReset // format for terminal
+				}
 			case "date":
 				replacement, err = processLine(match.Value)
 				if err != nil {
-					replacement = match.Value // If error occurs, return the original match value
+					replacement = match.Value
 				}
 			}
 		}
 
-		// Replace the original value with the replacement in the line
-		line = strings.Replace(line, match.Value, replacement, 1)
+		line = strings.Replace(line, match.Value, replacement, 1) // replaces in the line
 	}
 
 	return line + "\n"
