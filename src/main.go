@@ -6,6 +6,13 @@ import (
 	"os"
 )
 
+// ANSI escape codes for coloring and formatting text
+const (
+	ansiReset  = "\033[0m" // Reset all formatting
+	boldBlue   = "\033[1;34m"
+	boldYellow = "\033[1;33m"
+)
+
 type Match struct {
 	Index int    // sort the matches
 	Value string // matched text
@@ -81,6 +88,9 @@ func main() {
 	if err := writeOutput(outputFilePath, output); err != nil {
 		fmt.Println("Error writing to output file:", err)
 	}
+
+	// Also print the output to the terminal
+	fmt.Print(output) // output contains the formatted text
 }
 
 func writeOutput(filename, output string) error {
